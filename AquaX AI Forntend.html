@@ -1,0 +1,1816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AquaX AI — Irrigation Dashboard</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Nastaliq+Urdu:wght@500;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.11/dist/purify.min.js"></script>
+
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          canal: { deep: '#16323A', mid: '#20505E', glow: '#3E8A9C' },
+          wheat: { DEFAULT: '#D9A440', soft: '#F0CE83' },
+          leaf: '#5B8C5A', dry: '#C97B3D', wet: '#3E7CB1'
+        },
+        fontFamily: {
+          display: ['Fraunces', 'serif'],
+          sans: ['Inter', 'ui-sans-serif', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          urdu: ['"Noto Nastaliq Urdu"', 'serif']
+        }
+      }
+    }
+  };
+</script>
+
+<style>
+  body{ background:radial-gradient(circle at 15% 0%, #1E5866 0%, #16323A 55%, #0F2429 100%); margin:0; min-height:100vh; }
+  .glass{ background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); backdrop-filter:blur(6px); }
+  .glass-input{ background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.12); }
+  .glass-input:focus{ outline:2px solid #3E8A9C; outline-offset:1px; }
+
+  .nav-item{ display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:10px;
+    font-size:14px; font-weight:600; color:#9FBCC0; cursor:pointer; transition:all .15s ease;
+    border:1px solid transparent; white-space:nowrap; width:100%; text-align:left; background:none; }
+  .nav-item:hover{ background:rgba(255,255,255,0.06); }
+  .nav-item.active{ background:rgba(217,164,64,0.14); color:#F0CE83; border-color:rgba(217,164,64,0.35); }
+  .nav-item .icon{ font-size:17px; }
+
+  .panel{ display:none; }
+  .panel.active{ display:block; }
+
+  .view{ display:none !important; }
+  .view.active{ display:block !important; }
+
+  .mic-recording{ box-shadow:0 0 0 6px rgba(192,80,63,0.25); animation:pulse 1.2s infinite; }
+  @keyframes pulse{ 0%,100%{box-shadow:0 0 0 4px rgba(192,80,63,0.25);} 50%{box-shadow:0 0 0 9px rgba(192,80,63,0.10);} }
+
+  .gauge{ position:relative; width:54px; height:150px; border-radius:27px;
+    border:2px solid rgba(255,255,255,0.25); overflow:hidden; background:rgba(0,0,0,0.3); }
+  .gauge-fill{ position:absolute; bottom:0; left:0; width:100%; height:35%;
+    background:linear-gradient(180deg, var(--gauge-top,#3E7CB1), var(--gauge-bot,#2C5F6F));
+    transition:height .8s cubic-bezier(.22,.9,.28,1), background .8s ease; }
+  .gauge-fill::before{ content:""; position:absolute; top:-6px; left:-20%; width:140%; height:14px;
+    background:rgba(255,255,255,0.18); border-radius:50%; animation:sway 3.2s ease-in-out infinite; }
+  @keyframes sway{ 0%,100%{transform:translateX(-6%) scaleY(1);} 50%{transform:translateX(6%) scaleY(1.3);} }
+  .gauge-tick{ position:absolute; left:0; right:0; height:1px; background:rgba(255,255,255,0.35); }
+  .gauge-tick span{ position:absolute; right:-42px; top:-7px; font-size:9.5px; color:#9FBCC0; white-space:nowrap; }
+
+  .advice-markdown{ line-height:1.65; }
+  .advice-markdown p{ margin:0 0 10px; }
+  .advice-markdown ul, .advice-markdown ol{ margin:0 0 10px; padding-inline-start:1.3em; }
+  .advice-markdown strong{ color:#F0CE83; }
+  .advice-markdown.urdu{ font-family:'Noto Nastaliq Urdu', serif; direction:rtl; text-align:right; font-size:19px; line-height:2.1; }
+  .advice-markdown.urdu ul, .advice-markdown.urdu ol{ padding-inline-start:0; padding-inline-end:1.3em; }
+
+  .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+    clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+  .preview-frame{ border:2px dashed rgba(255,255,255,0.2); border-radius:12px; aspect-ratio:16/9;
+    display:flex; align-items:center; justify-content:center; overflow:hidden; background:rgba(0,0,0,0.2); }
+  .preview-frame img{ width:100%; height:100%; object-fit:cover; }
+
+  .spinner{ width:16px; height:16px; border-radius:50%; border:2px solid rgba(255,255,255,0.25);
+    border-top-color:#D9A440; animation:spin .8s linear infinite; display:inline-block; vertical-align:middle; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  /* ---- Landing ---- */
+  .drop{ position:absolute; border-radius:50% 50% 50% 0; background:rgba(62,138,156,0.18);
+    transform:rotate(45deg); animation:float 7s ease-in-out infinite; }
+  @keyframes float{ 0%,100%{ transform:rotate(45deg) translateY(0);} 50%{ transform:rotate(45deg) translateY(-18px);} }
+
+  /* ---- Auth card ---- */
+  .auth-tab{ flex:1; text-align:center; padding:10px 4px; font-size:13.5px; font-weight:600; color:#9FBCC0;
+    border-bottom:2px solid transparent; cursor:pointer; transition:all .15s ease; }
+  .auth-tab.active{ color:#F0CE83; border-color:#D9A440; }
+  .auth-form{ display:none; }
+  .auth-form.active{ display:block; }
+  .field-error{ color:#E8998A; font-size:12px; margin-top:4px; min-height:14px; }
+
+  /* ---- Modal ---- */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(6,16,19,0.72); backdrop-filter:blur(3px);
+    display:flex; align-items:center; justify-content:center; padding:16px; z-index:50; }
+
+  /* ---- Admin tables ---- */
+  table.db-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.db-table th{ text-align:left; color:#9FBCC0; font-weight:600; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.15); white-space:nowrap; }
+  table.db-table td{ padding:8px 10px; border-bottom:1px solid rgba(255,255,255,0.06); color:#E4EEF0; white-space:nowrap; }
+  table.db-table tr:hover td{ background:rgba(255,255,255,0.03); }
+  .badge-ok{ color:#8FCB8A; font-weight:600; }
+  .badge-fail{ color:#E8998A; font-weight:600; }
+</style>
+</head>
+<body class="min-h-screen text-slate-100 font-sans">
+
+<!-- =======================================================
+     VIEW 1: LANDING
+======================================================= -->
+<div id="view-landing" class="view active">
+ <div class="min-h-screen flex items-center justify-center relative overflow-hidden px-4">
+  <div class="drop" style="width:120px;height:120px;top:8%;left:10%;"></div>
+  <div class="drop" style="width:70px;height:70px;top:65%;left:78%;animation-delay:1.5s;"></div>
+  <div class="drop" style="width:46px;height:46px;top:22%;left:82%;animation-delay:.8s;"></div>
+
+  <div class="text-center max-w-md relative z-10">
+    <div class="text-5xl mb-3" aria-hidden="true">💧</div>
+    <h1 class="font-display font-bold text-4xl md:text-5xl tracking-tight">Aqua<span class="text-wheat">X</span> AI</h1>
+    <p class="text-slate-300 mt-3 text-[15px] leading-relaxed">
+      Know exactly when your field needs water. Ask by text, voice, or a photo of your crop —
+      AquaX reads your soil and the sky, then tells you what to do.
+    </p>
+    <button id="landing-start-btn" type="button"
+      class="mt-8 rounded-full bg-wheat text-canal-deep font-semibold text-[16px] px-10 py-3.5 hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-white transition shadow-lg">
+      Start
+    </button>
+    <p class="text-slate-500 text-xs mt-4">Frontend demo — accounts are stored only for this browser session.</p>
+  </div>
+ </div>
+</div>
+
+<!-- =======================================================
+     VIEW 2: AUTH (sign in / sign up / forgot password)
+======================================================= -->
+<div id="view-auth" class="view">
+ <div class="min-h-screen flex items-center justify-center px-4 py-10">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-6">
+      <div class="text-3xl mb-1" aria-hidden="true">💧</div>
+      <h1 class="font-display font-bold text-2xl">Aqua<span class="text-wheat">X</span> AI</h1>
+    </div>
+
+    <div class="glass rounded-2xl overflow-hidden">
+      <div class="flex border-b border-white/10">
+        <button type="button" class="auth-tab active" data-tab="signin" id="tab-signin">Sign in</button>
+        <button type="button" class="auth-tab" data-tab="signup" id="tab-signup">Sign up</button>
+      </div>
+
+      <div class="p-5">
+        <!-- Sign in -->
+        <form class="auth-form active" id="form-signin" novalidate>
+          <label for="si-email" class="text-xs text-slate-400 block mb-1">Email</label>
+          <input type="email" id="si-email" required autocomplete="email"
+            class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 mb-3" placeholder="you@example.com" />
+          <label for="si-password" class="text-xs text-slate-400 block mb-1">Password</label>
+          <input type="password" id="si-password" required autocomplete="current-password"
+            class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" placeholder="••••••••" />
+          <p class="field-error" id="signin-error"></p>
+          <button type="submit"
+            class="mt-2 w-full rounded-full bg-wheat text-canal-deep font-semibold text-[15px] py-3 hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-white transition">
+            Sign in
+          </button>
+          <p class="text-center text-xs text-slate-400 mt-3">No account? <button type="button" class="text-wheat-soft underline" data-goto-tab="signup">Sign up</button></p>
+        </form>
+
+        <!-- Sign up -->
+        <form class="auth-form" id="form-signup" novalidate>
+          <label for="su-name" class="text-xs text-slate-400 block mb-1">Full name</label>
+          <input type="text" id="su-name" required autocomplete="name"
+            class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 mb-3" placeholder="Ali Raza" />
+          <label for="su-email" class="text-xs text-slate-400 block mb-1">Email</label>
+          <input type="email" id="su-email" required autocomplete="email"
+            class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 mb-3" placeholder="you@example.com" />
+          <label for="su-password" class="text-xs text-slate-400 block mb-1">Password</label>
+          <input type="password" id="su-password" required minlength="6" autocomplete="new-password"
+            class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 mb-3" placeholder="At least 6 characters" />
+          <label for="su-confirm" class="text-xs text-slate-400 block mb-1">Confirm password</label>
+          <input type="password" id="su-confirm" required autocomplete="new-password"
+            class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" placeholder="••••••••" />
+          <label class="flex items-start gap-2 text-xs text-slate-400 mt-3">
+            <input type="checkbox" id="su-agree" class="mt-0.5" />
+            <span>I agree to the <span class="text-wheat-soft underline">Terms of Service</span> and <span class="text-wheat-soft underline">Privacy Policy</span>.</span>
+          </label>
+          <p class="field-error" id="signup-error"></p>
+          <button type="submit"
+            class="mt-2 w-full rounded-full bg-wheat text-canal-deep font-semibold text-[15px] py-3 hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-white transition">
+            Create account
+          </button>
+          <p class="text-center text-xs text-slate-400 mt-3">Have an account? <button type="button" class="text-wheat-soft underline" data-goto-tab="signin">Sign in</button></p>
+        </form>
+      </div>
+    </div>
+  </div>
+ </div>
+</div>
+
+<!-- =======================================================
+     VIEW 3: DASHBOARD
+======================================================= -->
+<div id="view-dashboard" class="view">
+<div class="flex flex-col md:flex-row h-screen overflow-hidden">
+
+  <!-- Sidebar: fixed to the viewport height, never scrolls itself -->
+  <nav class="glass md:w-56 md:h-screen px-3 py-3 md:py-5 flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible shrink-0" aria-label="Input mode">
+    <div class="hidden md:block px-2 mb-3">
+      <h1 class="font-display font-bold text-xl tracking-tight">Aqua<span class="text-wheat">X</span> AI</h1>
+      <p class="text-xs text-slate-400 mt-0.5" id="welcome-label">Irrigation dashboard</p>
+    </div>
+
+    <button class="nav-item active" data-panel="home" id="nav-home">
+      <span class="icon" aria-hidden="true">🏠</span> <span id="nav-home-label">Home</span>
+    </button>
+    <button class="nav-item" data-panel="text" id="nav-text">
+      <span class="icon" aria-hidden="true">💬</span> <span id="nav-text-label">Text query</span>
+    </button>
+    <button class="nav-item" data-panel="voice" id="nav-voice">
+      <span class="icon" aria-hidden="true">🎤</span> <span id="nav-voice-label">Voice query</span>
+    </button>
+    <button class="nav-item" data-panel="photo" id="nav-photo">
+      <span class="icon" aria-hidden="true">📷</span> <span id="nav-photo-label">Upload photo</span>
+    </button>
+    <button class="nav-item" data-panel="history" id="nav-history">
+      <span class="icon" aria-hidden="true">🕘</span> <span id="nav-history-label">My history</span>
+    </button>
+
+    <div class="hidden md:flex mt-auto pt-3 border-t border-white/10 gap-1" role="group" aria-label="Language">
+      <button id="lang-en" class="flex-1 py-1.5 text-xs font-semibold rounded-lg bg-wheat text-canal-deep" aria-pressed="true">EN</button>
+      <button id="lang-ur" class="flex-1 py-1.5 text-xs font-semibold rounded-lg text-slate-300" aria-pressed="false">اردو</button>
+    </div>
+
+    <button class="nav-item md:mt-1.5" id="nav-admin" type="button">
+      <span class="icon" aria-hidden="true">🔐</span> <span>Admin panel</span>
+    </button>
+    <button class="nav-item" id="btn-signout" type="button">
+      <span class="icon" aria-hidden="true">↩️</span> <span>Sign out</span>
+    </button>
+  </nav>
+
+  <!-- Main dashboard: this column scrolls per-panel; the Home panel itself
+       is sized/condensed to fit a typical laptop viewport without needing
+       to scroll at all. On very small windows a scrollbar appears here as
+       a safety net so nothing is ever hidden. -->
+  <main class="flex-1 flex justify-center px-4 md:px-8 py-4 h-screen overflow-y-auto">
+  <div class="w-full max-w-3xl">
+
+    <div class="flex md:hidden justify-end mb-3 gap-1" role="group" aria-label="Language">
+      <button id="lang-en-m" class="px-3 py-1 text-xs font-semibold rounded-full bg-wheat text-canal-deep" aria-pressed="true">EN</button>
+      <button id="lang-ur-m" class="px-3 py-1 text-xs font-semibold rounded-full border border-white/15 text-slate-300" aria-pressed="false">اردو</button>
+    </div>
+
+    <!-- Top bar: location chip, top-right corner. Click opens the location editor popover. -->
+    <div class="flex justify-end mb-3 relative">
+      <button id="location-chip" type="button"
+        class="flex items-center gap-1.5 rounded-full glass px-3.5 py-2 text-xs font-semibold text-slate-100 hover:bg-white/10 transition">
+        <span aria-hidden="true">📍</span>
+        <span id="location-chip-label">Set field location</span>
+        <span class="text-slate-400" aria-hidden="true">▾</span>
+      </button>
+
+      <div id="location-popover" class="hidden absolute right-0 top-full mt-2 w-[280px] z-20 glass rounded-2xl p-4 shadow-xl">
+        <h2 id="loc-title" class="font-display font-semibold text-wheat-soft text-[15px] mb-3 flex items-center gap-2">
+          <span aria-hidden="true">📍</span> Field location
+        </h2>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label for="lat" id="lbl-lat" class="text-xs text-slate-400 block mb-1">Latitude</label>
+            <input type="number" id="lat" step="0.0001" placeholder="e.g. 30.1575"
+              class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label for="lon" id="lbl-lon" class="text-xs text-slate-400 block mb-1">Longitude</label>
+            <input type="number" id="lon" step="0.0001" placeholder="e.g. 71.5249"
+              class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" />
+          </div>
+          <div>
+            <label for="postal" id="lbl-postal" class="text-xs text-slate-400 block mb-1">Postal code</label>
+            <input type="text" id="postal" placeholder="e.g. 60000"
+              class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" />
+          </div>
+          <div class="col-span-2">
+            <label for="city" id="lbl-city" class="text-xs text-slate-400 block mb-1">City</label>
+            <input type="text" id="city" placeholder="e.g. Multan"
+              class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" />
+          </div>
+        </div>
+        <button id="locate-btn" type="button"
+          class="mt-3 w-full rounded-full border border-canal-glow text-slate-100 text-sm font-semibold py-2.5 hover:bg-canal-glow/15 focus:outline-none focus:ring-2 focus:ring-canal-glow transition">
+          Use my current location
+        </button>
+        <p id="locate-status" class="text-xs text-slate-400 mt-2 min-h-[14px]"></p>
+        <button id="location-save-btn" type="button"
+          class="mt-1 w-full rounded-full bg-wheat text-canal-deep text-sm font-semibold py-2.5 hover:brightness-105 transition">
+          Save
+        </button>
+      </div>
+    </div>
+
+    <!-- ===== Home panel ===== -->
+    <section class="panel active" id="panel-home">
+      <!-- Live weather strip -->
+      <div class="glass rounded-2xl p-3.5 mb-3 font-mono">
+        <div class="flex items-center justify-between flex-wrap gap-2 border-b border-white/10 pb-2.5 mb-2.5">
+          <div class="text-[11.5px] tracking-wider text-cyan-300/90" id="home-weather-title">LIVE WEATHER</div>
+          <div class="flex items-center gap-1.5 text-[11px] text-leaf font-semibold" id="home-live-badge">
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-leaf animate-pulse" aria-hidden="true"></span> LIVE
+          </div>
+        </div>
+        <div class="grid grid-cols-3 sm:grid-cols-6 gap-2.5 mb-3">
+          <div>
+            <div class="text-[9.5px] tracking-wider text-slate-400">TEMPERATURE</div>
+            <div class="text-lg font-bold text-slate-100" id="hw-temp">--</div>
+            <div class="text-[10px] text-slate-500" id="hw-feels">--</div>
+          </div>
+          <div>
+            <div class="text-[9.5px] tracking-wider text-slate-400">HUMIDITY</div>
+            <div class="text-lg font-bold text-slate-100" id="hw-humidity">--</div>
+            <div class="text-[10px] text-slate-500" id="hw-humidity-note">--</div>
+          </div>
+          <div>
+            <div class="text-[9.5px] tracking-wider text-slate-400">WIND</div>
+            <div class="text-lg font-bold text-slate-100" id="hw-wind">--</div>
+            <div class="text-[10px] text-slate-500" id="hw-wind-dir">--</div>
+          </div>
+          <div>
+            <div class="text-[9.5px] tracking-wider text-slate-400">RAINFALL 24H</div>
+            <div class="text-lg font-bold text-slate-100" id="hw-rain">--</div>
+            <div class="text-[10px] text-slate-500" id="hw-rain-note">--</div>
+          </div>
+          <div>
+            <div class="text-[9.5px] tracking-wider text-slate-400">UV INDEX</div>
+            <div class="text-lg font-bold text-slate-100" id="hw-uv">--</div>
+            <div class="text-[10px] text-slate-500" id="hw-uv-note">--</div>
+          </div>
+          <div>
+            <div class="text-[9.5px] tracking-wider text-slate-400">EVAPOTRANSP.</div>
+            <div class="text-lg font-bold text-slate-100" id="hw-eto">--</div>
+            <div class="text-[10px] text-slate-500">High demand</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <div class="bg-black/25 rounded-xl p-2.5">
+            <div class="text-[9.5px] tracking-wider text-slate-400 mb-0.5">SOIL MOISTURE</div>
+            <div class="text-lg font-bold text-slate-100" id="hm-moisture">--<span class="text-[10px] text-slate-400 font-normal ml-1">VWC</span></div>
+            <div class="h-1 rounded-full bg-white/10 mt-1.5 mb-1 overflow-hidden"><div class="h-full bg-cyan-400" id="hm-moisture-bar" style="width:0%"></div></div>
+            <div class="flex justify-between text-[10px]"><span class="text-slate-500" id="hm-moisture-delta">--</span><span class="text-cyan-300 font-semibold" id="hm-moisture-tag">--</span></div>
+          </div>
+          <div class="bg-black/25 rounded-xl p-2.5">
+            <div class="text-[9.5px] tracking-wider text-slate-400 mb-0.5">BEST IRRIGATION TIME</div>
+            <div class="text-lg font-bold text-slate-100" id="hm-time">--</div>
+            <div class="h-1 rounded-full bg-white/10 mt-1.5 mb-1 overflow-hidden"><div class="h-full bg-wet" id="hm-time-bar" style="width:0%"></div></div>
+            <div class="flex justify-between items-center text-[10px]"><span class="text-slate-500" id="hm-time-delta">--</span><span class="px-1.5 py-0.5 rounded bg-wet/20 text-wet font-semibold" id="hm-time-tag">--</span></div>
+          </div>
+          <div class="bg-black/25 rounded-xl p-2.5">
+            <div class="text-[9.5px] tracking-wider text-slate-400 mb-0.5">IRRIGATION NEED</div>
+            <div class="text-lg font-bold text-slate-100" id="hm-need">--</div>
+            <div class="h-1 rounded-full bg-white/10 mt-1.5 mb-1 overflow-hidden"><div class="h-full bg-wheat" id="hm-need-bar" style="width:0%"></div></div>
+            <div class="flex justify-between items-center text-[10px]"><span class="text-slate-500" id="hm-need-note">--</span><span class="px-1.5 py-0.5 rounded bg-wheat/20 text-wheat-soft font-semibold" id="hm-need-tag">--</span></div>
+          </div>
+          <div class="bg-black/25 rounded-xl p-2.5">
+            <div class="text-[9.5px] tracking-wider text-slate-400 mb-0.5">HEAT / FROST STRESS</div>
+            <div class="text-lg font-bold text-slate-100" id="hm-heat">--</div>
+            <div class="h-1 rounded-full bg-white/10 mt-1.5 mb-1 overflow-hidden"><div class="h-full bg-dry" id="hm-heat-bar" style="width:0%"></div></div>
+            <div class="flex justify-between items-center text-[10px]"><span class="text-slate-500" id="hm-heat-delta">--</span><span class="px-1.5 py-0.5 rounded bg-dry/20 text-dry font-semibold" id="hm-heat-tag">--</span></div>
+          </div>
+          <div class="bg-black/25 rounded-xl p-2.5">
+            <div class="text-[9.5px] tracking-wider text-slate-400 mb-0.5">SPRAY / WIND RISK</div>
+            <div class="text-lg font-bold text-slate-100" id="hm-spray">--</div>
+            <div class="h-1 rounded-full bg-white/10 mt-1.5 mb-1 overflow-hidden"><div class="h-full bg-cyan-400" id="hm-spray-bar" style="width:0%"></div></div>
+            <div class="flex justify-between items-center text-[10px]"><span class="text-slate-500" id="hm-spray-delta">--</span><span class="px-1.5 py-0.5 rounded bg-cyan-400/20 text-cyan-300 font-semibold" id="hm-spray-tag">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Crop irrigation reference table — collapsed by default to save
+           vertical space; expand only when wanted. -->
+      <details class="glass rounded-2xl p-3.5 mb-3 font-mono">
+        <summary class="text-[11.5px] tracking-wider text-cyan-300/90 cursor-pointer select-none list-none flex items-center justify-between">
+          <span>CROP WATER GUIDE — PAKISTAN</span>
+          <span class="text-slate-400 text-[10px]">tap to expand ▾</span>
+        </summary>
+        <p class="text-[11px] text-slate-400 my-2.5 leading-relaxed">
+          Typical seasonal water need and irrigation count for major crops grown across Punjab & Sindh.
+          Actual need shifts with soil type, variety and season — use this as a starting reference,
+          not a substitute for local agriculture extension advice.
+        </p>
+        <div class="overflow-x-auto -mx-1">
+          <table class="w-full text-[11.5px] border-collapse min-w-[560px]">
+            <thead>
+              <tr class="text-left text-slate-400 border-b border-white/10">
+                <th class="py-2 px-2 font-normal">Crop</th>
+                <th class="py-2 px-2 font-normal">Season</th>
+                <th class="py-2 px-2 font-normal">Water need</th>
+                <th class="py-2 px-2 font-normal">Irrigations</th>
+                <th class="py-2 px-2 font-normal">Critical stage — don't skip</th>
+              </tr>
+            </thead>
+            <tbody class="text-slate-200">
+              <tr class="border-b border-white/5">
+                <td class="py-2 px-2 font-semibold">Wheat</td>
+                <td class="py-2 px-2 text-slate-400">Rabi (Nov–Apr)</td>
+                <td class="py-2 px-2">~350–450 mm</td>
+                <td class="py-2 px-2">4–6</td>
+                <td class="py-2 px-2">Crown-root init. (20–25 DAS) &amp; grain-fill</td>
+              </tr>
+              <tr class="border-b border-white/5">
+                <td class="py-2 px-2 font-semibold">Cotton</td>
+                <td class="py-2 px-2 text-slate-400">Kharif (Apr–Oct)</td>
+                <td class="py-2 px-2">~700–900 mm</td>
+                <td class="py-2 px-2">6–8</td>
+                <td class="py-2 px-2">Flowering &amp; boll development</td>
+              </tr>
+              <tr class="border-b border-white/5">
+                <td class="py-2 px-2 font-semibold">Rice (paddy)</td>
+                <td class="py-2 px-2 text-slate-400">Kharif (Jun–Oct)</td>
+                <td class="py-2 px-2">~1200–1500 mm</td>
+                <td class="py-2 px-2">Standing water</td>
+                <td class="py-2 px-2">Transplanting &amp; panicle initiation</td>
+              </tr>
+              <tr class="border-b border-white/5">
+                <td class="py-2 px-2 font-semibold">Sugarcane</td>
+                <td class="py-2 px-2 text-slate-400">Year-round (12–18 mo)</td>
+                <td class="py-2 px-2">~1800–2200 mm</td>
+                <td class="py-2 px-2">10–14</td>
+                <td class="py-2 px-2">Grand growth phase (Jun–Sep)</td>
+              </tr>
+              <tr>
+                <td class="py-2 px-2 font-semibold">Maize</td>
+                <td class="py-2 px-2 text-slate-400">Spring or Kharif</td>
+                <td class="py-2 px-2">~500–600 mm</td>
+                <td class="py-2 px-2">4–6</td>
+                <td class="py-2 px-2">Tasseling &amp; silking</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+    <section class="panel" id="panel-text">
+      <div class="glass rounded-2xl p-4 mb-4">
+        <h2 id="ask-title-text" class="font-display font-semibold text-wheat-soft text-[15px] mb-3 flex items-center gap-2">
+          <span aria-hidden="true">💬</span> Ask about your field
+        </h2>
+        <label for="query-text" class="sr-only">Your farming question</label>
+        <textarea id="query-text" rows="3" placeholder="e.g. Should I irrigate my wheat field today?"
+          class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 resize-y min-h-[76px]"></textarea>
+        <button id="submit-text-btn" type="button"
+          class="mt-3 w-full rounded-full bg-wheat text-canal-deep font-semibold text-[15px] py-3 hover:brightness-105 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-white transition">
+          Get irrigation advice
+        </button>
+        <p id="status-text" role="status" aria-live="polite" class="text-center text-sm text-slate-300 mt-2 min-h-[16px]"></p>
+      </div>
+    </section>
+
+    <!-- ===== Voice panel ===== -->
+    <section class="panel" id="panel-voice">
+      <div class="glass rounded-2xl p-4 mb-4">
+        <h2 id="ask-title-voice" class="font-display font-semibold text-wheat-soft text-[15px] mb-3 flex items-center gap-2">
+          <span aria-hidden="true">🎤</span> Ask by voice
+        </h2>
+        <div class="flex flex-col items-center gap-3 py-3">
+          <button id="mic-btn" type="button" aria-pressed="false"
+            class="w-16 h-16 rounded-full border border-white/15 bg-canal-mid text-2xl flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-canal-glow transition">
+            <span aria-hidden="true">🎤</span>
+            <span class="sr-only" id="mic-label">Record your question</span>
+          </button>
+          <p id="mic-hint" class="text-xs text-slate-400">Tap to record, tap again to stop</p>
+        </div>
+        <label for="query-voice" id="lbl-transcript" class="text-xs text-slate-400 block mb-1">Transcript (editable)</label>
+        <textarea id="query-voice" rows="2" placeholder="Your recorded question will appear here"
+          class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 resize-y min-h-[60px]"></textarea>
+        <button id="submit-voice-btn" type="button"
+          class="mt-3 w-full rounded-full bg-wheat text-canal-deep font-semibold text-[15px] py-3 hover:brightness-105 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-white transition">
+          Get irrigation advice
+        </button>
+        <p id="status-voice" role="status" aria-live="polite" class="text-center text-sm text-slate-300 mt-2 min-h-[16px]"></p>
+      </div>
+    </section>
+
+    <!-- ===== Photo panel ===== -->
+    <section class="panel" id="panel-photo">
+      <div class="glass rounded-2xl p-4 mb-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 id="ask-title-photo" class="font-display font-semibold text-wheat-soft text-[15px] flex items-center gap-2">
+            <span aria-hidden="true">📷</span> Analyze a crop photo
+          </h2>
+          <button id="remove-photo-btn" type="button" class="text-xs text-slate-400 underline hidden">
+            <span id="remove-photo-label">Remove</span>
+          </button>
+        </div>
+
+        <div class="preview-frame mb-3 hidden" id="preview-frame">
+          <img id="preview-img" alt="Selected crop or soil photo" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-2.5 mb-3">
+          <button id="upload-btn" type="button"
+            class="rounded-full border border-canal-glow text-slate-100 text-sm font-semibold py-2.5 hover:bg-canal-glow/15 focus:outline-none focus:ring-2 focus:ring-canal-glow transition">
+            <span aria-hidden="true">🖼️</span> <span id="upload-label">Upload photo</span>
+          </button>
+          <button id="camera-btn" type="button"
+            class="rounded-full border border-canal-glow text-slate-100 text-sm font-semibold py-2.5 hover:bg-canal-glow/15 focus:outline-none focus:ring-2 focus:ring-canal-glow transition">
+            <span aria-hidden="true">📸</span> <span id="camera-label">Take photo</span>
+          </button>
+        </div>
+        <input type="file" id="file-upload" accept="image/*" class="hidden" />
+        <input type="file" id="file-camera" accept="image/*" capture="environment" class="hidden" />
+
+        <!-- Live in-browser camera capture (used instead of the OS file picker
+             whenever getUserMedia is available, so "Take photo" opens the
+             actual camera rather than a file browser) -->
+        <div id="camera-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Camera capture">
+          <div class="glass rounded-2xl p-4 w-full max-w-sm">
+            <video id="camera-video" autoplay playsinline class="w-full rounded-lg bg-black/40" style="aspect-ratio:4/3;object-fit:cover;"></video>
+            <canvas id="camera-canvas" class="hidden"></canvas>
+            <p id="camera-error" class="field-error text-center mt-2"></p>
+            <div class="grid grid-cols-2 gap-2.5 mt-3">
+              <button id="camera-cancel-btn" type="button"
+                class="rounded-full border border-canal-glow text-slate-100 text-sm font-semibold py-2.5 hover:bg-canal-glow/15 focus:outline-none focus:ring-2 focus:ring-canal-glow transition">
+                Cancel
+              </button>
+              <button id="camera-capture-btn" type="button"
+                class="rounded-full bg-wheat text-canal-deep font-semibold text-sm py-2.5 hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-white transition">
+                <span aria-hidden="true">📸</span> Capture
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <label for="query-photo" id="lbl-caption" class="text-xs text-slate-400 block mb-1">Caption / question (optional)</label>
+        <textarea id="query-photo" rows="2" placeholder="e.g. Why are these leaves turning yellow?"
+          class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 resize-y min-h-[56px] mb-3"></textarea>
+
+        <!-- Only appears once a photo is selected -->
+        <button id="submit-photo-btn" type="button"
+          class="hidden w-full rounded-full bg-wheat text-canal-deep font-semibold text-[15px] py-3 hover:brightness-105 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-white transition">
+          Analyze photo
+        </button>
+        <p id="status-photo" role="status" aria-live="polite" class="text-center text-sm text-slate-300 mt-2 min-h-[16px]"></p>
+      </div>
+    </section>
+
+    <!-- History: a signed-in user's own past irrigation advice, pulled
+         from the real SQLite-backed /api/history endpoint. -->
+    <section class="panel" id="panel-history">
+      <div class="glass rounded-2xl p-4 mb-4">
+        <h2 class="font-display font-semibold text-wheat-soft text-[15px] mb-3 flex items-center gap-2">
+          <span aria-hidden="true">🕘</span> My irrigation advice history
+        </h2>
+        <div id="history-list" class="space-y-2.5">
+          <p class="text-sm text-slate-400">Loading…</p>
+        </div>
+      </div>
+    </section>
+    <section id="results" class="glass rounded-2xl p-4 mb-4 hidden" aria-live="polite">
+      <h2 id="results-title" class="font-display font-semibold text-wheat-soft text-[15px] mb-3.5 flex items-center gap-2">
+        <span aria-hidden="true">🌾</span> Field reading
+      </h2>
+
+      <div class="flex items-center gap-5 mb-4">
+        <div class="gauge" role="img" aria-label="Soil moisture gauge">
+          <div class="gauge-fill" id="gauge-fill"></div>
+          <div class="gauge-tick" style="bottom:20%"><span id="tick-dry">20% dry</span></div>
+          <div class="gauge-tick" style="bottom:40%"><span id="tick-wet">40% wet</span></div>
+        </div>
+        <div class="flex-1">
+          <div class="font-display font-bold text-4xl text-wheat-soft leading-none" id="moisture-big">--%</div>
+          <div class="text-sm font-semibold mt-1" id="band-name">—</div>
+          <div class="text-[11.5px] text-slate-400 mt-0.5 leading-snug" id="band-note">Soil moisture at 3–9cm depth.</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 mb-2">
+        <div class="bg-black/20 rounded-lg py-2.5 px-1 text-center">
+          <div class="font-display font-semibold text-lg text-wheat-soft" id="m-temp">--</div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5" id="l-temp">AIR TEMP</div>
+        </div>
+        <div class="bg-black/20 rounded-lg py-2.5 px-1 text-center">
+          <div class="font-display font-semibold text-lg text-wheat-soft" id="m-humidity">--</div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5" id="l-humidity">HUMIDITY</div>
+        </div>
+        <div class="bg-black/20 rounded-lg py-2.5 px-1 text-center">
+          <div class="font-display font-semibold text-lg text-wheat-soft" id="m-soiltemp">--</div>
+          <div class="text-[10.5px] text-slate-400 mt-0.5" id="l-soiltemp">SOIL TEMP</div>
+        </div>
+        <div class="col-span-3 bg-black/20 rounded-lg py-2.5 px-3 flex justify-between items-center text-sm">
+          <span id="l-condition" class="text-slate-300">Sky condition</span>
+          <strong id="m-condition">--</strong>
+        </div>
+        <div class="col-span-3 bg-black/20 rounded-lg py-2.5 px-3 flex justify-between items-center text-sm">
+          <span id="l-precip" class="text-slate-300">Recent rain</span>
+          <strong id="m-precip">--</strong>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 mt-4 mb-2">
+        <div class="text-[10.5px] uppercase tracking-wider font-semibold text-canal-glow" id="advice-eyebrow">
+          AquaX AI recommends
+        </div>
+        <div class="flex items-center gap-1.5">
+          <select id="tts-lang-select" class="bg-black/30 text-slate-300 text-[11px] rounded-md px-1.5 py-1 border border-white/10 focus:outline-none" aria-label="Voice language">
+            <option value="en">EN</option>
+            <option value="ur">اردو</option>
+          </select>
+          <button type="button" id="tts-btn" class="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-md bg-canal-glow/15 text-canal-glow hover:bg-canal-glow/25 transition-colors" aria-pressed="false">
+            <span id="tts-btn-icon" aria-hidden="true">🔊</span>
+            <span id="tts-btn-label">Read aloud</span>
+          </button>
+        </div>
+      </div>
+      <div class="bg-black/20 rounded-lg p-4 text-[14.5px] advice-markdown" id="advice-text">—</div>
+    </section>
+
+    <details class="mb-6">
+      <summary id="cfg-summary" class="cursor-pointer text-xs text-canal-glow">Backend connection settings</summary>
+      <div class="mt-1.5">
+        <label for="backend-url" id="lbl-backend" class="text-xs text-slate-400 block mb-1">API base URL (e.g. your ngrok tunnel)</label>
+        <input type="text" id="backend-url" value="http://127.0.0.1:8000"
+          class="glass-input w-full rounded-lg px-3 py-2 text-xs text-slate-100" />
+        <p class="text-[11px] text-slate-500 mt-1">Point this at your running AquaX backend (e.g. an ngrok tunnel to your local server).</p>
+      </div>
+    </details>
+  </div>
+  </main>
+</div>
+</div>
+
+<!-- =======================================================
+     ADMIN LOGIN MODAL
+======================================================= -->
+<div class="modal-overlay hidden" id="admin-login-overlay">
+  <div class="glass rounded-2xl p-5 w-full max-w-xs">
+    <h3 class="font-display font-semibold text-wheat-soft text-[15px] mb-3 flex items-center gap-2">
+      <span aria-hidden="true">🔐</span> Admin panel login
+    </h3>
+    <label for="admin-login-id" class="text-xs text-slate-400 block mb-1">Login ID</label>
+    <input type="text" id="admin-login-id" autocomplete="off"
+      class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100 mb-3" placeholder="Admin login ID" />
+    <label for="admin-login-pass" class="text-xs text-slate-400 block mb-1">Password</label>
+    <input type="password" id="admin-login-pass" autocomplete="off"
+      class="glass-input w-full rounded-lg px-3 py-2.5 text-sm text-slate-100" placeholder="Admin password" />
+    <p class="field-error" id="admin-login-error"></p>
+    <div class="flex gap-2 mt-3">
+      <button type="button" id="admin-login-cancel"
+        class="flex-1 rounded-full border border-white/15 text-slate-300 text-sm font-semibold py-2.5 hover:bg-white/5 transition">Cancel</button>
+      <button type="button" id="admin-login-submit"
+        class="flex-1 rounded-full bg-wheat text-canal-deep text-sm font-semibold py-2.5 hover:brightness-105 transition">Log in</button>
+    </div>
+  </div>
+</div>
+
+<!-- =======================================================
+     ADMIN PANEL MODAL
+======================================================= -->
+<div class="modal-overlay hidden" id="admin-panel-overlay">
+  <div class="glass rounded-2xl p-5 w-full max-w-3xl max-h-[85vh] overflow-y-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="font-display font-semibold text-wheat-soft text-lg flex items-center gap-2">
+        <span aria-hidden="true">🔐</span> Admin panel
+      </h3>
+      <button type="button" id="admin-panel-close" class="text-slate-400 hover:text-slate-100 text-xl leading-none" aria-label="Close">✕</button>
+    </div>
+
+    <h4 class="text-sm font-semibold text-slate-200 mb-2">Registered users (<span id="admin-users-count">0</span>)</h4>
+    <div class="overflow-x-auto mb-5 rounded-lg border border-white/10">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Role</th><th>Signed up</th></tr></thead>
+        <tbody id="admin-users-tbody"></tbody>
+      </table>
+    </div>
+
+    <h4 class="text-sm font-semibold text-slate-200 mb-2">Sign-in activity (<span id="admin-signins-count">0</span>)</h4>
+    <div class="overflow-x-auto mb-5 rounded-lg border border-white/10">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>Email</th><th>Event</th><th>Result</th><th>Time</th></tr></thead>
+        <tbody id="admin-signins-tbody"></tbody>
+      </table>
+    </div>
+
+    <h4 class="text-sm font-semibold text-slate-200 mb-2">All users' advice history (<span id="admin-history-count">0</span>)</h4>
+    <div class="overflow-x-auto rounded-lg border border-white/10">
+      <table class="db-table">
+        <thead><tr><th>#</th><th>User</th><th>Query</th><th>Advice</th><th>Time</th></tr></thead>
+        <tbody id="admin-history-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Real auth, backed by the SQLite database via main.py.
+   A session token is kept in localStorage so a refresh doesn't
+   sign you out — replacing the old in-memory arrays that reset
+   on every page reload.
+========================================================= */
+let currentUser = null;
+let authToken = localStorage.getItem("aquax_token") || null;
+let adminToken = null; // admin session is separate and never persisted
+
+function apiBase(){
+  return document.getElementById("backend-url").value.replace(/\/+$/, "");
+}
+
+async function apiFetch(path, { method = "GET", body = null, token = null } = {}){
+  const headers = { "Content-Type": "application/json" };
+  if(token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`${apiBase()}${path}`, {
+    method, headers, body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(data.detail || `Server responded ${res.status}`);
+  return data;
+}
+
+function showView(id){
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById(id).classList.add("active");
+}
+
+/* ---- Landing -> Auth ---- */
+document.getElementById("landing-start-btn").addEventListener("click", () => {
+  showView("view-auth");
+});
+
+/* ---- Auth tab switching ---- */
+function setAuthTab(tabName){
+  document.querySelectorAll(".auth-tab").forEach(b => b.classList.toggle("active", b.dataset.tab === tabName));
+  document.querySelectorAll(".auth-form").forEach(f => f.classList.remove("active"));
+  document.getElementById(`form-${tabName}`).classList.add("active");
+}
+document.querySelectorAll(".auth-tab").forEach(btn => {
+  btn.addEventListener("click", () => setAuthTab(btn.dataset.tab));
+});
+document.querySelectorAll("[data-goto-tab]").forEach(btn => {
+  btn.addEventListener("click", () => setAuthTab(btn.dataset.gotoTab));
+});
+
+/* ---- Sign up ---- */
+document.getElementById("form-signup").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("signup-error");
+  errEl.textContent = "";
+
+  const name = document.getElementById("su-name").value.trim();
+  const email = document.getElementById("su-email").value.trim().toLowerCase();
+  const password = document.getElementById("su-password").value;
+  const confirm = document.getElementById("su-confirm").value;
+  const agreed = document.getElementById("su-agree").checked;
+
+  if(!name || !email || !password || !confirm){
+    errEl.textContent = "Please fill in every field."; return;
+  }
+  if(password.length < 6){
+    errEl.textContent = "Password must be at least 6 characters."; return;
+  }
+  if(password !== confirm){
+    errEl.textContent = "Passwords do not match."; return;
+  }
+  if(!agreed){
+    errEl.textContent = "You must agree to the Terms and Privacy Policy."; return;
+  }
+
+  const submitBtn = e.target.querySelector("button[type=submit]");
+  submitBtn.disabled = true;
+  try{
+    const data = await apiFetch("/api/auth/signup", { method: "POST", body: { name, email, password } });
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem("aquax_token", authToken);
+    document.getElementById("form-signup").reset();
+    enterDashboard();
+  }catch(err){
+    errEl.textContent = err.message || "Sign up failed. Is the backend running?";
+  }finally{
+    submitBtn.disabled = false;
+  }
+});
+
+/* ---- Sign in ---- */
+document.getElementById("form-signin").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("signin-error");
+  errEl.textContent = "";
+
+  const email = document.getElementById("si-email").value.trim().toLowerCase();
+  const password = document.getElementById("si-password").value;
+
+  const submitBtn = e.target.querySelector("button[type=submit]");
+  submitBtn.disabled = true;
+  try{
+    const data = await apiFetch("/api/auth/signin", { method: "POST", body: { email, password } });
+    authToken = data.token;
+    currentUser = data.user;
+    localStorage.setItem("aquax_token", authToken);
+    document.getElementById("form-signin").reset();
+    enterDashboard();
+  }catch(err){
+    errEl.textContent = err.message || "Sign in failed. Is the backend running?";
+  }finally{
+    submitBtn.disabled = false;
+  }
+});
+
+/* ---- Enter dashboard ---- */
+function enterDashboard(){
+  document.getElementById("welcome-label").textContent = currentUser
+    ? `Signed in as ${currentUser.name}` : "Irrigation dashboard";
+  showView("view-dashboard");
+  updateLocationChipLabel();
+  renderHomePanel();
+  // Try to detect the real field location automatically; falls back to the
+  // manual "Use my current location" button / popover fields if blocked.
+  if(!document.getElementById("lat").value){
+    locateUser(null, true);
+  }
+}
+
+/* ---- Restore session on page load, so a refresh doesn't sign you out ---- */
+async function tryRestoreSession(){
+  if(!authToken) return;
+  try{
+    currentUser = await apiFetch("/api/auth/me", { token: authToken });
+    enterDashboard();
+  }catch(err){
+    // Token expired/invalid/backend not reachable yet — fall back to landing.
+    authToken = null;
+    localStorage.removeItem("aquax_token");
+  }
+}
+tryRestoreSession();
+
+/* ---- Sign out ---- */
+document.getElementById("btn-signout").addEventListener("click", async () => {
+  try{ await apiFetch("/api/auth/signout", { method: "POST", token: authToken }); }catch(err){}
+  authToken = null;
+  currentUser = null;
+  localStorage.removeItem("aquax_token");
+  showView("view-landing");
+});
+
+/* ---- Admin login modal — real accounts, gated on role==='admin'.
+   This is a separate, non-persisted session so logging into the admin
+   panel never disturbs whichever farmer account is signed in. ---- */
+const adminLoginOverlay = document.getElementById("admin-login-overlay");
+const adminPanelOverlay = document.getElementById("admin-panel-overlay");
+
+document.getElementById("nav-admin").addEventListener("click", () => {
+  document.getElementById("admin-login-id").value = "";
+  document.getElementById("admin-login-pass").value = "";
+  document.getElementById("admin-login-error").textContent = "";
+  adminLoginOverlay.classList.remove("hidden");
+});
+document.getElementById("admin-login-cancel").addEventListener("click", () => {
+  adminLoginOverlay.classList.add("hidden");
+});
+document.getElementById("admin-login-submit").addEventListener("click", async () => {
+  const id = document.getElementById("admin-login-id").value.trim();
+  const pass = document.getElementById("admin-login-pass").value;
+  const errEl = document.getElementById("admin-login-error");
+  const submitBtn = document.getElementById("admin-login-submit");
+  submitBtn.disabled = true;
+  try{
+    const data = await apiFetch("/api/auth/signin", { method: "POST", body: { email: id, password: pass } });
+    if(data.user.role !== "admin"){
+      errEl.textContent = "This account doesn't have admin access.";
+      return;
+    }
+    adminToken = data.token;
+    adminLoginOverlay.classList.add("hidden");
+    openAdminPanel();
+  }catch(err){
+    errEl.textContent = err.message || "Incorrect login ID or password.";
+  }finally{
+    submitBtn.disabled = false;
+  }
+});
+
+async function openAdminPanel(){
+  const usersBody = document.getElementById("admin-users-tbody");
+  const signinsBody = document.getElementById("admin-signins-tbody");
+  const historyBody = document.getElementById("admin-history-tbody");
+  usersBody.innerHTML = `<tr><td colspan="5" class="text-center text-slate-500 py-3">Loading…</td></tr>`;
+  signinsBody.innerHTML = "";
+  historyBody.innerHTML = "";
+  adminPanelOverlay.classList.remove("hidden");
+
+  try{
+    const [usersData, signinsData, historyData] = await Promise.all([
+      apiFetch("/api/admin/users", { token: adminToken }),
+      apiFetch("/api/admin/signins", { token: adminToken }),
+      apiFetch("/api/admin/history", { token: adminToken })
+    ]);
+
+    const users = usersData.users;
+    document.getElementById("admin-users-count").textContent = users.length;
+    usersBody.innerHTML = users.length === 0
+      ? `<tr><td colspan="5" class="text-center text-slate-500 py-3">No registered users yet.</td></tr>`
+      : users.map((u, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(u.name)}</td><td>${escapeHtml(u.email)}</td><td>${escapeHtml(u.role)}</td><td>${new Date(u.created_at).toLocaleString()}</td></tr>`).join("");
+
+    const signins = signinsData.signins;
+    document.getElementById("admin-signins-count").textContent = signins.length;
+    signinsBody.innerHTML = signins.length === 0
+      ? `<tr><td colspan="5" class="text-center text-slate-500 py-3">No sign-in activity yet.</td></tr>`
+      : signins.map((s, i) => {
+          const badge = s.result === "success" ? `<span class="badge-ok">success</span>` : `<span class="badge-fail">failed</span>`;
+          return `<tr><td>${i + 1}</td><td>${escapeHtml(s.email)}</td><td>${escapeHtml(s.event)}</td><td>${badge}</td><td>${new Date(s.at).toLocaleString()}</td></tr>`;
+        }).join("");
+
+    const history = historyData.history;
+    document.getElementById("admin-history-count").textContent = history.length;
+    historyBody.innerHTML = history.length === 0
+      ? `<tr><td colspan="5" class="text-center text-slate-500 py-3">No advice history yet.</td></tr>`
+      : history.map((h, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(h.user_name)}</td><td>${escapeHtml((h.query_text || "").slice(0, 60))}</td><td>${escapeHtml((h.ai_advice || "").slice(0, 80))}…</td><td>${new Date(h.created_at).toLocaleString()}</td></tr>`).join("");
+  }catch(err){
+    usersBody.innerHTML = `<tr><td colspan="5" class="text-center text-red-300 py-3">${escapeHtml(err.message || "Failed to load admin data.")}</td></tr>`;
+  }
+}
+document.getElementById("admin-panel-close").addEventListener("click", () => {
+  adminPanelOverlay.classList.add("hidden");
+});
+
+function escapeHtml(str){
+  const d = document.createElement("div");
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+/* =========================================================
+   i18n (dashboard strings — landing/auth/admin stay English)
+========================================================= */
+const i18n = {
+  en: {
+    navText: "Text query", navVoice: "Voice query", navPhoto: "Upload photo",
+    locTitle: "📍 Field location", lat: "Latitude", lon: "Longitude",
+    postal: "Postal code", city: "City",
+    locate: "Use my current location", locating: "Locating…",
+    askTitleText: "💬 Ask about your field", askTitleVoice: "🎤 Ask by voice", askTitlePhoto: "📷 Analyze a crop photo",
+    placeholderText: "e.g. Should I irrigate my wheat field today?",
+    micHint: "Tap to record, tap again to stop",
+    transcriptLbl: "Transcript (editable)",
+    captionLbl: "Caption / question (optional)",
+    placeholderPhoto: "e.g. Why are these leaves turning yellow?",
+    submit: "Get irrigation advice", submitPhoto: "Analyze photo",
+    submitting: "Reading the field…", analyzing: "Analyzing photo…",
+    uploadLabel: "Upload photo", cameraLabel: "Take photo", removeLabel: "Remove",
+    resultsTitle: "🌾 Field reading",
+    tempLbl: "AIR TEMP", humidityLbl: "HUMIDITY", soilTempLbl: "SOIL TEMP",
+    conditionLbl: "Sky condition", precipLbl: "Recent rain",
+    adviceEyebrow: "AquaX AI recommends",
+    tickDry: "20% dry", tickWet: "40% wet",
+    bandDry: "Dry — irrigate soon", bandOk: "Optimal moisture", bandWet: "Waterlogged — hold off",
+    bandNote: "Soil moisture at 3–9cm depth.",
+    errNoQuery: "Type or record a question first.",
+    errNoPhoto: "Add a photo first.",
+    errFetch: "Couldn't reach AquaX AI. Check the backend URL below and try again.",
+    cfgSummary: "Backend connection settings",
+    backendLbl: "API base URL (e.g. your ngrok tunnel)",
+    micError: "Microphone access was blocked or unavailable.",
+    micUnsupported: "This browser doesn't support microphone recording.",
+    micDenied: "Microphone permission was denied — allow it in the browser's site settings and try again.",
+    micNotFound: "No microphone was found on this device.",
+    transcribing: "Transcribing your voice…",
+    defaultPhotoQuestion: "Please analyze this photo and give me farming advice.",
+    readAloud: "Read aloud", stopReading: "Stop", ttsUnsupported: "Voice playback isn't supported in this browser."
+  },
+  ur: {
+    navText: "تحریری سوال", navVoice: "آواز سے سوال", navPhoto: "تصویر اپ لوڈ کریں",
+    locTitle: "📍 کھیت کا مقام", lat: "طول البلد", lon: "عرض البلد",
+    postal: "پوسٹل کوڈ", city: "شہر",
+    locate: "میرا موجودہ مقام استعمال کریں", locating: "مقام تلاش ہو رہا ہے…",
+    askTitleText: "💬 اپنے کھیت کے بارے میں پوچھیں", askTitleVoice: "🎤 آواز سے پوچھیں", askTitlePhoto: "📷 فصل کی تصویر کا تجزیہ",
+    placeholderText: "مثلاً کیا مجھے آج اپنے گندم کے کھیت کو پانی دینا چاہیے؟",
+    micHint: "ریکارڈ کرنے کے لیے تھپتھپائیں، روکنے کے لیے دوبارہ تھپتھپائیں",
+    transcriptLbl: "تحریر (قابل ترمیم)",
+    captionLbl: "کیپشن / سوال (اختیاری)",
+    placeholderPhoto: "مثلاً یہ پتے پیلے کیوں ہو رہے ہیں؟",
+    submit: "آبپاشی کا مشورہ لیں", submitPhoto: "تصویر کا تجزیہ کریں",
+    submitting: "کھیت کا جائزہ لیا جا رہا ہے…", analyzing: "تصویر کا تجزیہ ہو رہا ہے…",
+    uploadLabel: "تصویر اپ لوڈ کریں", cameraLabel: "تصویر لیں", removeLabel: "ہٹائیں",
+    resultsTitle: "🌾 کھیت کی صورتحال",
+    tempLbl: "ہوا کا درجہ حرارت", humidityLbl: "نمی", soilTempLbl: "مٹی کا درجہ حرارت",
+    conditionLbl: "موسم کی حالت", precipLbl: "حالیہ بارش",
+    adviceEyebrow: "AquaX AI کی رائے",
+    tickDry: "20% خشک", tickWet: "40% تر",
+    bandDry: "خشک — جلد پانی دیں", bandOk: "مثالی نمی", bandWet: "پانی جمع — رکیں",
+    bandNote: "مٹی کی نمی 3 سے 9 سینٹی میٹر گہرائی پر۔",
+    errNoQuery: "پہلے سوال لکھیں یا ریکارڈ کریں۔",
+    errNoPhoto: "پہلے تصویر شامل کریں۔",
+    errFetch: "AquaX AI سے رابطہ نہیں ہو سکا۔ نیچے بیک اینڈ یو آر ایل چیک کریں اور دوبارہ کوشش کریں۔",
+    cfgSummary: "بیک اینڈ کنکشن کی ترتیبات",
+    backendLbl: "API بیس یو آر ایل (مثلاً آپ کا ngrok ٹنل)",
+    micError: "مائیکروفون تک رسائی ممکن نہیں ہوئی۔",
+    micUnsupported: "یہ براؤزر مائیکروفون ریکارڈنگ کو سپورٹ نہیں کرتا۔",
+    micDenied: "مائیکروفون کی اجازت مسترد کر دی گئی — براؤزر کی سائٹ سیٹنگز میں اجازت دیں اور دوبارہ کوشش کریں۔",
+    micNotFound: "اس ڈیوائس پر کوئی مائیکروفون نہیں ملا۔",
+    transcribing: "آپ کی آواز کو تحریر میں بدلا جا رہا ہے…",
+    defaultPhotoQuestion: "براہ کرم اس تصویر کا تجزیہ کریں اور زرعی مشورہ دیں۔",
+    readAloud: "زبانی سنیں", stopReading: "روکیں", ttsUnsupported: "اس براؤزر میں آواز چلانا ممکن نہیں ہے۔"
+  }
+};
+let lang = "en";
+let selectedImage = null;
+
+function t(key){ return i18n[lang][key]; }
+
+function applyLang(){
+  const d = i18n[lang];
+  document.documentElement.lang = lang;
+  document.documentElement.dir = (lang === "ur") ? "rtl" : "ltr";
+  document.getElementById("nav-text-label").textContent = d.navText;
+  document.getElementById("nav-voice-label").textContent = d.navVoice;
+  document.getElementById("nav-photo-label").textContent = d.navPhoto;
+  document.getElementById("loc-title").innerHTML = `<span aria-hidden="true">📍</span> ${d.locTitle.replace('📍 ','')}`;
+  document.getElementById("lbl-lat").textContent = d.lat;
+  document.getElementById("lbl-lon").textContent = d.lon;
+  document.getElementById("lbl-postal").textContent = d.postal;
+  document.getElementById("lbl-city").textContent = d.city;
+  document.getElementById("locate-btn").textContent = d.locate;
+  document.getElementById("ask-title-text").innerHTML = `<span aria-hidden="true">💬</span> ${d.askTitleText.replace('💬 ','')}`;
+  document.getElementById("ask-title-voice").innerHTML = `<span aria-hidden="true">🎤</span> ${d.askTitleVoice.replace('🎤 ','')}`;
+  document.getElementById("ask-title-photo").innerHTML = `<span aria-hidden="true">📷</span> ${d.askTitlePhoto.replace('📷 ','')}`;
+  document.getElementById("query-text").placeholder = d.placeholderText;
+  document.getElementById("mic-hint").textContent = d.micHint;
+  document.getElementById("lbl-transcript").textContent = d.transcriptLbl;
+  document.getElementById("lbl-caption").textContent = d.captionLbl;
+  document.getElementById("query-photo").placeholder = d.placeholderPhoto;
+  document.getElementById("submit-text-btn").textContent = d.submit;
+  document.getElementById("submit-voice-btn").textContent = d.submit;
+  document.getElementById("submit-photo-btn").textContent = d.submitPhoto;
+  document.getElementById("upload-label").textContent = d.uploadLabel;
+  document.getElementById("camera-label").textContent = d.cameraLabel;
+  document.getElementById("remove-photo-label").textContent = d.removeLabel;
+  document.getElementById("results-title").innerHTML = `<span aria-hidden="true">🌾</span> ${d.resultsTitle.replace('🌾 ','')}`;
+  document.getElementById("l-temp").textContent = d.tempLbl;
+  document.getElementById("l-humidity").textContent = d.humidityLbl;
+  document.getElementById("l-soiltemp").textContent = d.soilTempLbl;
+  document.getElementById("l-condition").textContent = d.conditionLbl;
+  document.getElementById("l-precip").textContent = d.precipLbl;
+  document.getElementById("advice-eyebrow").textContent = d.adviceEyebrow;
+  document.getElementById("tick-dry").textContent = d.tickDry;
+  document.getElementById("tick-wet").textContent = d.tickWet;
+  document.getElementById("cfg-summary").textContent = d.cfgSummary;
+  document.getElementById("lbl-backend").textContent = d.backendLbl;
+  document.getElementById("band-note").textContent = d.bandNote;
+  const ttsLabelEl = document.getElementById("tts-btn-label");
+  if(ttsLabelEl && !(window.speechSynthesis && window.speechSynthesis.speaking)){
+    ttsLabelEl.textContent = d.readAloud;
+  }
+}
+
+function setLangButtons(activeId, inactiveId){
+  document.getElementById(activeId).className = "px-3.5 py-1.5 text-xs font-semibold rounded-full bg-wheat text-canal-deep";
+  document.getElementById(activeId).setAttribute("aria-pressed","true");
+  document.getElementById(inactiveId).className = "px-3.5 py-1.5 text-xs font-semibold rounded-full border border-white/15 text-slate-300";
+  document.getElementById(inactiveId).setAttribute("aria-pressed","false");
+}
+
+function bindLangButtons(enId, urId){
+  document.getElementById(enId).addEventListener("click", () => {
+    lang = "en";
+    ["lang-en","lang-en-m"].forEach(id => document.getElementById(id) && setLangButtons(id, id.includes("-m") ? "lang-ur-m" : "lang-ur"));
+    applyLang();
+  });
+  document.getElementById(urId).addEventListener("click", () => {
+    lang = "ur";
+    ["lang-ur","lang-ur-m"].forEach(id => document.getElementById(id) && setLangButtons(id, id.includes("-m") ? "lang-en-m" : "lang-en"));
+    applyLang();
+  });
+}
+bindLangButtons("lang-en", "lang-ur");
+bindLangButtons("lang-en-m", "lang-ur-m");
+
+/* ---- Sidebar navigation (text / voice / photo panels) ---- */
+const navButtons = document.querySelectorAll(".nav-item[data-panel]");
+let lastResultsPanel = null; // which panel's query the currently-shown #results belongs to
+navButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    navButtons.forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
+    document.getElementById(`panel-${btn.dataset.panel}`).classList.add("active");
+    if(btn.dataset.panel === "history") loadHistoryPanel();
+    // #results lives outside the panel-switching system on purpose (so it
+    // can render under whichever mode produced it), but that meant it kept
+    // showing on every other tab too — e.g. old text-query results pushing
+    // the photo panel's camera buttons down. Only keep it visible if we're
+    // still on the same panel that produced it.
+    if(btn.dataset.panel !== lastResultsPanel){
+      document.getElementById("results").classList.add("hidden");
+    }
+  });
+});
+
+async function loadHistoryPanel(){
+  const listEl = document.getElementById("history-list");
+  listEl.innerHTML = `<p class="text-sm text-slate-400">Loading…</p>`;
+  try{
+    const data = await apiFetch("/api/history", { token: authToken });
+    if(!data.history || data.history.length === 0){
+      listEl.innerHTML = `<p class="text-sm text-slate-400">No advice yet — ask a question from Text, Voice or Upload photo and it'll show up here.</p>`;
+      return;
+    }
+    listEl.innerHTML = data.history.map(h => `
+      <div class="bg-black/20 rounded-lg p-3">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[10.5px] text-slate-500">${new Date(h.created_at).toLocaleString()}</span>
+          <span class="text-[10px] uppercase tracking-wide text-cyan-300/80">${escapeHtml(h.query_type)}</span>
+        </div>
+        <div class="text-sm text-slate-200 mb-1">${escapeHtml(h.query_text || "(no question text)")}</div>
+        <div class="text-[13px] text-slate-400 advice-markdown">${escapeHtml((h.ai_advice || "").slice(0, 300))}${(h.ai_advice || "").length > 300 ? "…" : ""}</div>
+      </div>
+    `).join("");
+  }catch(err){
+    listEl.innerHTML = `<p class="text-sm text-red-300">${escapeHtml(err.message || "Could not load history.")}</p>`;
+  }
+}
+
+/* ---- Geolocation + reverse geocoding (Nominatim) ----
+   Two lookups are made on purpose: a precise one (zoom=18, building/street
+   level) for the postal code, and a separate coarser one (zoom=10,
+   city/town level) just for the city name. Nominatim picks a different
+   "nearest feature" to anchor the address hierarchy on depending on zoom,
+   and the city-level lookup is the one that reliably resolves to the
+   locality name rather than a broader administrative territory. */
+function locateUser(statusEl, silent){
+  if(!navigator.geolocation){
+    if(statusEl) statusEl.textContent = "Geolocation isn't supported on this device.";
+    return;
+  }
+  if(statusEl) statusEl.textContent = t("locating") || "Locating…";
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      const latVal = pos.coords.latitude;
+      const lonVal = pos.coords.longitude;
+      document.getElementById("lat").value = latVal.toFixed(4);
+      document.getElementById("lon").value = lonVal.toFixed(4);
+      try{
+        const [preciseRes, cityRes] = await Promise.all([
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latVal}&lon=${lonVal}&zoom=18&addressdetails=1`, { headers: { "Accept": "application/json" } }),
+          fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latVal}&lon=${lonVal}&zoom=10&addressdetails=1`, { headers: { "Accept": "application/json" } })
+        ]);
+        if(!preciseRes.ok && !cityRes.ok) throw new Error("reverse geocode failed");
+        const preciseData = preciseRes.ok ? await preciseRes.json() : {};
+        const cityData = cityRes.ok ? await cityRes.json() : {};
+        const preciseAddr = preciseData.address || {};
+        const cityAddr = cityData.address || {};
+
+        document.getElementById("postal").value = preciseAddr.postcode || cityAddr.postcode || "";
+        document.getElementById("city").value =
+          cityAddr.city || cityAddr.town || cityAddr.municipality || cityAddr.county ||
+          preciseAddr.city || preciseAddr.town || preciseAddr.suburb || preciseAddr.village || "";
+        currentRegion = cityAddr.state || preciseAddr.state || "";
+        if(statusEl) statusEl.textContent = "Location filled in from GPS.";
+      }catch(err){
+        if(statusEl) statusEl.textContent = "Got coordinates, but couldn't resolve the city automatically.";
+      }
+      updateLocationChipLabel();
+      if(document.getElementById("view-dashboard").classList.contains("active")) renderHomePanel();
+    },
+    err => {
+      if(!silent && statusEl) statusEl.textContent = "Couldn't get your location: " + err.message;
+    }
+  );
+}
+document.getElementById("locate-btn").addEventListener("click", () => {
+  locateUser(document.getElementById("locate-status"), false);
+});
+
+/* ---- Location chip + popover ---- */
+let currentRegion = "";
+const locationChip = document.getElementById("location-chip");
+const locationPopover = document.getElementById("location-popover");
+locationChip.addEventListener("click", () => {
+  locationPopover.classList.toggle("hidden");
+});
+document.getElementById("location-save-btn").addEventListener("click", () => {
+  locationPopover.classList.add("hidden");
+  updateLocationChipLabel();
+  renderHomePanel();
+});
+document.addEventListener("click", (e) => {
+  if(!locationPopover.classList.contains("hidden") &&
+     !locationPopover.contains(e.target) && !locationChip.contains(e.target)){
+    locationPopover.classList.add("hidden");
+  }
+});
+function updateLocationChipLabel(){
+  const city = document.getElementById("city").value.trim();
+  const lat = document.getElementById("lat").value;
+  const lon = document.getElementById("lon").value;
+  const label = document.getElementById("location-chip-label");
+  if(city){
+    label.textContent = currentRegion ? `${city}, ${currentRegion}` : city;
+  } else if(lat && lon){
+    label.textContent = `${parseFloat(lat).toFixed(2)}, ${parseFloat(lon).toFixed(2)}`;
+  } else {
+    label.textContent = "Set field location";
+  }
+}
+
+/* =========================================================
+   Home panel — live weather strip
+========================================================= */
+function renderHomeSummary(liveData){
+  const real = !!liveData;
+
+  const temp = real && liveData.temperature != null
+    ? parseFloat(String(liveData.temperature).replace(/[^\d.-]/g, "")) : null;
+  const humidity = real && liveData.humidity != null
+    ? parseFloat(String(liveData.humidity).replace(/[^\d.-]/g, "")) : null;
+  const wind = real && typeof liveData.wind_speed_kmh === "number" ? liveData.wind_speed_kmh : null;
+  const rain24 = real && liveData.precipitation != null
+    ? parseFloat(String(liveData.precipitation).replace(/[^\d.-]/g, "")) || 0 : null;
+  const uv = real && typeof liveData.uv_index === "number" ? liveData.uv_index : null;
+  const soilMoisture = real && liveData.soil_moisture != null
+    ? parseFloat(String(liveData.soil_moisture).replace(/[^\d.-]/g, "")) : null;
+
+  const city = document.getElementById("city").value.trim();
+  const dateStr = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/ /g, " ");
+  document.getElementById("home-weather-title").textContent = city
+    ? `LIVE WEATHER — ${city.toUpperCase()}${currentRegion ? ", " + currentRegion.toUpperCase() : ""} · ${dateStr}`
+    : `LIVE WEATHER · ${dateStr}`;
+
+  const liveBadge = document.getElementById("home-live-badge");
+  if(real){
+    liveBadge.innerHTML = `<span class="inline-block w-1.5 h-1.5 rounded-full bg-leaf animate-pulse" aria-hidden="true"></span> LIVE`;
+    liveBadge.className = "flex items-center gap-1.5 text-[11px] text-leaf font-semibold";
+  } else {
+    liveBadge.innerHTML = `<span class="inline-block w-1.5 h-1.5 rounded-full bg-red-400" aria-hidden="true"></span> OFFLINE`;
+    liveBadge.className = "flex items-center gap-1.5 text-[11px] text-red-300 font-semibold";
+  }
+
+  // Every field below shows the real API value, or a plain "N/A" — never a
+  // fabricated number — when that particular metric isn't available.
+  document.getElementById("hw-temp").textContent = temp != null ? `${temp}°C` : "N/A";
+  document.getElementById("hw-feels").textContent = real ? (liveData.feels_like || liveData.weather_condition || "—") : "No connection";
+  document.getElementById("hw-humidity").textContent = humidity != null ? `${humidity}%` : "N/A";
+  document.getElementById("hw-humidity-note").textContent = humidity == null ? "" : humidity > 70 ? "High" : humidity > 45 ? "Moderate" : "Low";
+  document.getElementById("hw-wind").textContent = wind != null ? `${wind} km/h` : "N/A";
+  document.getElementById("hw-wind-dir").textContent = "";
+  document.getElementById("hw-rain").textContent = rain24 != null ? `${rain24.toFixed(1)} mm` : "N/A";
+  document.getElementById("hw-rain-note").textContent = rain24 == null ? "" : rain24 > 0 ? "Recent rainfall" : "No rain expected";
+  document.getElementById("hw-uv").textContent = uv == null ? "N/A" : uv >= 8 ? `${uv} — Very high` : uv >= 6 ? `${uv} — High` : `${uv} — Moderate`;
+  document.getElementById("hw-uv-note").textContent = real ? "Open-Meteo" : "";
+  document.getElementById("hw-eto").textContent = "N/A";
+
+  document.getElementById("hm-moisture").innerHTML = soilMoisture != null
+    ? `${soilMoisture}<span class="text-[11px] text-slate-400 font-normal ml-1">VWC%</span>`
+    : `N/A`;
+  document.getElementById("hm-moisture-bar").style.width = `${soilMoisture ?? 0}%`;
+  document.getElementById("hm-moisture-delta").textContent = real ? "From your field's live reading" : "Connect to backend for a reading";
+  document.getElementById("hm-moisture-tag").textContent = soilMoisture == null ? "--" : soilMoisture < 25 ? "LOW" : soilMoisture > 60 ? "WET" : "ADEQUATE";
+
+  const needLevel = soilMoisture == null ? null : soilMoisture < 25 ? "HIGH" : soilMoisture < 45 ? "MEDIUM" : "LOW";
+  document.getElementById("hm-need").textContent = needLevel || "--";
+  document.getElementById("hm-need-bar").style.width = needLevel === "HIGH" ? "85%" : needLevel === "MEDIUM" ? "50%" : needLevel === "LOW" ? "15%" : "0%";
+  document.getElementById("hm-need-note").textContent = needLevel == null ? "Connect to backend for a reading"
+    : needLevel === "LOW" ? "No irrigation needed" : `Soil moisture is ${needLevel === "HIGH" ? "critically" : "moderately"} low`;
+  document.getElementById("hm-need-tag").textContent = needLevel === "HIGH" ? "ACTION REQ." : needLevel === "MEDIUM" ? "MONITOR" : needLevel === "LOW" ? "ON TRACK" : "--";
+
+  // --- Best irrigation time: derived from UV + wind. Midday sun and wind
+  // both drive up evaporation loss, so mornings/evenings are the classic
+  // recommendation for canal/tube-well irrigation in Punjab & Sindh fields.
+  const hourNow = new Date().getHours();
+  const highEvap = (uv != null && uv >= 6) || (wind != null && wind > 15);
+  const isMidday = hourNow >= 10 && hourNow <= 16;
+  if(!real){
+    document.getElementById("hm-time").textContent = "--";
+    document.getElementById("hm-time-bar").style.width = "0%";
+    document.getElementById("hm-time-delta").textContent = "Connect to backend for a reading";
+    document.getElementById("hm-time-tag").textContent = "--";
+  } else if(highEvap && isMidday){
+    document.getElementById("hm-time").textContent = "5–8 AM";
+    document.getElementById("hm-time-bar").style.width = "30%";
+    document.getElementById("hm-time-delta").textContent = "High sun/wind now raises evaporation loss";
+    document.getElementById("hm-time-tag").textContent = "AVOID MIDDAY";
+  } else {
+    document.getElementById("hm-time").textContent = "Now";
+    document.getElementById("hm-time-bar").style.width = "85%";
+    document.getElementById("hm-time-delta").textContent = "Calm, cooler conditions — low water loss";
+    document.getElementById("hm-time-tag").textContent = "GOOD WINDOW";
+  }
+
+  // --- Heat / frost stress: simple thresholds relevant to wheat, cotton
+  // and rice grown across Pakistan. Not a diagnosis, just a quick flag.
+  if(!real || temp == null){
+    document.getElementById("hm-heat").textContent = "--";
+    document.getElementById("hm-heat-bar").style.width = "0%";
+    document.getElementById("hm-heat-delta").textContent = "Connect to backend for a reading";
+    document.getElementById("hm-heat-tag").textContent = "--";
+  } else if(temp <= 4){
+    document.getElementById("hm-heat").textContent = "Frost risk";
+    document.getElementById("hm-heat-bar").style.width = "90%";
+    document.getElementById("hm-heat-delta").textContent = "Near-freezing air temp — protect young crops";
+    document.getElementById("hm-heat-tag").textContent = "ALERT";
+  } else if(temp >= 38){
+    document.getElementById("hm-heat").textContent = "Heat stress";
+    document.getElementById("hm-heat-bar").style.width = "90%";
+    document.getElementById("hm-heat-delta").textContent = "High heat — crops may wilt, irrigate early/late";
+    document.getElementById("hm-heat-tag").textContent = "ALERT";
+  } else {
+    document.getElementById("hm-heat").textContent = "Normal";
+    document.getElementById("hm-heat-bar").style.width = "25%";
+    document.getElementById("hm-heat-delta").textContent = "Air temperature in a safe range";
+    document.getElementById("hm-heat-tag").textContent = "SAFE";
+  }
+
+  // --- Spray/wind risk: relevant for pesticide, urea and foliar spray
+  // timing — spraying in high wind causes drift and wastes input cost.
+  if(!real || wind == null){
+    document.getElementById("hm-spray").textContent = "--";
+    document.getElementById("hm-spray-bar").style.width = "0%";
+    document.getElementById("hm-spray-delta").textContent = "Connect to backend for a reading";
+    document.getElementById("hm-spray-tag").textContent = "--";
+  } else if(wind > 20){
+    document.getElementById("hm-spray").textContent = "High";
+    document.getElementById("hm-spray-bar").style.width = "90%";
+    document.getElementById("hm-spray-delta").textContent = `${wind} km/h — spray will drift, wait it out`;
+    document.getElementById("hm-spray-tag").textContent = "AVOID SPRAY";
+  } else if(wind > 10){
+    document.getElementById("hm-spray").textContent = "Moderate";
+    document.getElementById("hm-spray-bar").style.width = "55%";
+    document.getElementById("hm-spray-delta").textContent = `${wind} km/h — spray with caution`;
+    document.getElementById("hm-spray-tag").textContent = "CAUTION";
+  } else {
+    document.getElementById("hm-spray").textContent = "Low";
+    document.getElementById("hm-spray-bar").style.width = "20%";
+    document.getElementById("hm-spray-delta").textContent = `${wind} km/h — safe conditions to spray`;
+    document.getElementById("hm-spray-tag").textContent = "SAFE";
+  }
+}
+
+/* Pulls real field data for the currently selected location from the
+   AquaX backend. Returns null (and the UI falls back to clearly-labeled
+   ESTIMATED placeholder values) if the backend can't be reached. */
+async function fetchHomeData(){
+  const lat = document.getElementById("lat").value;
+  const lon = document.getElementById("lon").value;
+  if(!lat || !lon) return null;
+  try{
+    const base = document.getElementById("backend-url").value.replace(/\/+$/,"");
+    const form = new FormData();
+    form.append("text", "Give a brief status summary for this field.");
+    form.append("lat", lat);
+    form.append("lon", lon);
+    form.append("postal", document.getElementById("postal").value);
+    form.append("city", document.getElementById("city").value);
+    form.append("region", currentRegion || "");
+    const res = await fetch(`${base}/api/recommendation`, { method: "POST", body: form });
+    if(!res.ok) return null;
+    return await res.json();
+  }catch(err){
+    return null;
+  }
+}
+
+async function renderHomePanel(){
+  const liveData = await fetchHomeData();
+  renderHomeSummary(liveData);
+}
+
+/* ---- Shared submit to /api/recommendation ---- */
+async function callRecommendation({ text, image, statusEl, submitBtn, analyzingLabel }){
+  statusEl.classList.remove("text-red-300", "text-amber-300");
+  submitBtn.disabled = true;
+  statusEl.innerHTML = `<span class="spinner"></span> ${analyzingLabel}`;
+
+  try{
+    const base = document.getElementById("backend-url").value.replace(/\/+$/,"");
+    const form = new FormData();
+    form.append("text", text);
+    form.append("lat", document.getElementById("lat").value);
+    form.append("lon", document.getElementById("lon").value);
+    form.append("postal", document.getElementById("postal").value);
+    form.append("city", document.getElementById("city").value);
+    form.append("region", currentRegion || "");
+    if(image){ form.append("image", image); }
+
+    const res = await fetch(`${base}/api/recommendation`, {
+      method: "POST",
+      headers: authToken ? { "Authorization": `Bearer ${authToken}` } : undefined,
+      body: form
+    });
+    if(!res.ok){
+      const errBody = await res.json().catch(() => ({}));
+      throw new Error(errBody.detail || `Server responded ${res.status}`);
+    }
+    const data = await res.json();
+    statusEl.textContent = "";
+    renderResults(data);
+  }catch(err){
+    statusEl.classList.add("text-red-300");
+    statusEl.textContent = err.message || t("errFetch");
+  }finally{
+    submitBtn.disabled = false;
+  }
+}
+
+/* ---- Text panel ---- */
+document.getElementById("submit-text-btn").addEventListener("click", () => {
+  const statusEl = document.getElementById("status-text");
+  const query = document.getElementById("query-text").value.trim();
+  if(!query){
+    statusEl.classList.add("text-red-300");
+    statusEl.textContent = t("errNoQuery");
+    return;
+  }
+  callRecommendation({
+    text: query, image: null,
+    statusEl, submitBtn: document.getElementById("submit-text-btn"),
+    analyzingLabel: t("submitting")
+  });
+});
+
+/* ---- Voice panel ---- */
+// NOTE on the approach: the browser's built-in SpeechRecognition
+// (webkitSpeechRecognition) was tried here first, but on Chromium it
+// silently does nothing on file:// pages — no prompt, no error, no result
+// — because it has to relay audio to Google's own recognition servers and
+// that request gets dropped for file:// origins. Plain getUserMedia()
+// recording doesn't have that problem (file:// is a valid secure context
+// for it), so that's the path used here: record audio in the browser,
+// upload it, transcribe it with Gemini on the backend — the same models
+// that are now confirmed working for /api/recommendation.
+let mediaRecorder, audioChunks = [];
+const micBtn = document.getElementById("mic-btn");
+
+micBtn.addEventListener("click", async () => {
+  const statusEl = document.getElementById("status-voice");
+
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    statusEl.classList.add("text-red-300");
+    statusEl.textContent = t("micUnsupported");
+    return;
+  }
+
+  if(mediaRecorder && mediaRecorder.state === "recording"){
+    mediaRecorder.stop();
+    return;
+  }
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    // Safely detect a MIME type this browser's MediaRecorder actually supports,
+    // instead of assuming audio/webm — Safari, for example, only supports
+    // audio/mp4. Whatever we pick here is also sent to the backend so it can
+    // configure the matching Speech-to-Text encoding.
+    const candidateMimeTypes = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+      "audio/wav"
+    ];
+    const supportedMimeType = candidateMimeTypes.find(mt =>
+      typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(mt)
+    );
+
+    mediaRecorder = supportedMimeType
+      ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+      : new MediaRecorder(stream); // let the browser pick its own default
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => { if(e.data && e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      micBtn.classList.remove("mic-recording");
+      micBtn.setAttribute("aria-pressed", "false");
+      stream.getTracks().forEach(track => track.stop());
+
+      const actualMimeType = mediaRecorder.mimeType || audioChunks[0]?.type || "audio/webm";
+      const blob = new Blob(audioChunks, { type: actualMimeType });
+
+      if(blob.size === 0){
+        statusEl.classList.add("text-red-300");
+        statusEl.textContent = t("micError");
+        return;
+      }
+
+      statusEl.classList.remove("text-red-300");
+      statusEl.textContent = t("transcribing");
+      try{
+        const base = document.getElementById("backend-url").value.replace(/\/+$/,"");
+        const ext = actualMimeType.includes("ogg") ? "ogg"
+          : actualMimeType.includes("mp4") ? "m4a"
+          : actualMimeType.includes("wav") ? "wav"
+          : "webm";
+        const form = new FormData();
+        form.append("file", blob, `query.${ext}`);
+        // Tell the backend exactly what codec/container this is so it can
+        // build a matching RecognitionConfig instead of assuming LINEAR16.
+        form.append("mime_type", actualMimeType);
+
+        const res = await fetch(`${base}/api/voice-process`, { method:"POST", body: form });
+        const data = await res.json().catch(() => ({}));
+        if(!res.ok){
+          throw new Error(data.detail || `Server responded ${res.status}`);
+        }
+        if(data.transcribed_text){
+          document.getElementById("query-voice").value = data.transcribed_text;
+          statusEl.textContent = "";
+        } else {
+          statusEl.classList.add("text-red-300");
+          statusEl.textContent = data.detail || t("micError");
+        }
+      }catch(err){
+        statusEl.classList.add("text-red-300");
+        statusEl.textContent = err.message || t("errFetch");
+      }
+    };
+    mediaRecorder.start();
+    micBtn.classList.add("mic-recording");
+    micBtn.setAttribute("aria-pressed", "true");
+  }catch(err){
+    statusEl.classList.add("text-red-300");
+    // Surface the real reason instead of a generic message — this is the
+    // difference between "mic blocked by OS", "no mic found", and "user
+    // denied permission", which each need a different fix from the user.
+    if(err.name === "NotAllowedError" || err.name === "SecurityError"){
+      statusEl.textContent = t("micDenied");
+    } else if(err.name === "NotFoundError"){
+      statusEl.textContent = t("micNotFound");
+    } else {
+      statusEl.textContent = `${t("micError")} (${err.name || err.message})`;
+    }
+  }
+});
+
+document.getElementById("submit-voice-btn").addEventListener("click", () => {
+  const statusEl = document.getElementById("status-voice");
+  const query = document.getElementById("query-voice").value.trim();
+  if(!query){
+    statusEl.classList.add("text-red-300");
+    statusEl.textContent = t("errNoQuery");
+    return;
+  }
+  callRecommendation({
+    text: query, image: null,
+    statusEl, submitBtn: document.getElementById("submit-voice-btn"),
+    analyzingLabel: t("submitting")
+  });
+});
+
+/* ---- Photo panel ---- */
+const fileUpload = document.getElementById("file-upload");
+const fileCamera = document.getElementById("file-camera");
+const previewFrame = document.getElementById("preview-frame");
+const previewImg = document.getElementById("preview-img");
+const removeBtn = document.getElementById("remove-photo-btn");
+const submitPhotoBtn = document.getElementById("submit-photo-btn");
+
+document.getElementById("upload-btn").addEventListener("click", () => fileUpload.click());
+
+/* ---- Live camera capture ---- */
+const cameraModal = document.getElementById("camera-modal");
+const cameraVideo = document.getElementById("camera-video");
+const cameraCanvas = document.getElementById("camera-canvas");
+const cameraError = document.getElementById("camera-error");
+let cameraStream = null;
+
+async function openCameraModal(){
+  cameraError.textContent = "";
+  cameraModal.classList.remove("hidden");
+  try{
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+    cameraVideo.srcObject = cameraStream;
+  }catch(err){
+    // Real camera stream isn't available/permitted (common on desktop
+    // browsers without a webcam, or if permission was denied) — fall back
+    // to the OS-level camera capture via the file input instead of leaving
+    // the user stuck.
+    closeCameraModal();
+    fileCamera.click();
+  }
+}
+
+function closeCameraModal(){
+  if(cameraStream){
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+  cameraVideo.srcObject = null;
+  cameraModal.classList.add("hidden");
+}
+
+document.getElementById("camera-btn").addEventListener("click", () => {
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    // No live-camera API in this browser at all — go straight to the
+    // OS file/camera picker.
+    fileCamera.click();
+    return;
+  }
+  openCameraModal();
+});
+
+document.getElementById("camera-cancel-btn").addEventListener("click", closeCameraModal);
+
+document.getElementById("camera-capture-btn").addEventListener("click", () => {
+  if(!cameraVideo.videoWidth){
+    cameraError.textContent = "Camera isn't ready yet — try again in a moment.";
+    return;
+  }
+  cameraCanvas.width = cameraVideo.videoWidth;
+  cameraCanvas.height = cameraVideo.videoHeight;
+  cameraCanvas.getContext("2d").drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+  cameraCanvas.toBlob((blob) => {
+    if(!blob){
+      cameraError.textContent = "Couldn't capture the photo — please try again.";
+      return;
+    }
+    const file = new File([blob], `field-photo-${Date.now()}.jpg`, { type: "image/jpeg" });
+    handleFileSelected([file]);
+    closeCameraModal();
+  }, "image/jpeg", 0.92);
+});
+
+function handleFileSelected(fileList){
+  const file = fileList[0];
+  if(!file) return;
+  selectedImage = file;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    previewImg.src = e.target.result;
+    previewFrame.classList.remove("hidden");
+    removeBtn.classList.remove("hidden");
+    submitPhotoBtn.classList.remove("hidden");
+  };
+  reader.readAsDataURL(file);
+}
+
+fileUpload.addEventListener("change", (e) => handleFileSelected(e.target.files));
+fileCamera.addEventListener("change", (e) => handleFileSelected(e.target.files));
+
+removeBtn.addEventListener("click", () => {
+  selectedImage = null;
+  previewFrame.classList.add("hidden");
+  removeBtn.classList.add("hidden");
+  submitPhotoBtn.classList.add("hidden");
+  fileUpload.value = "";
+  fileCamera.value = "";
+});
+
+submitPhotoBtn.addEventListener("click", () => {
+  const statusEl = document.getElementById("status-photo");
+  if(!selectedImage){
+    statusEl.classList.add("text-red-300");
+    statusEl.textContent = t("errNoPhoto");
+    return;
+  }
+  const caption = document.getElementById("query-photo").value.trim() || t("defaultPhotoQuestion");
+  callRecommendation({
+    text: caption, image: selectedImage,
+    statusEl, submitBtn: submitPhotoBtn,
+    analyzingLabel: t("analyzing")
+  });
+});
+
+/* ---- Render results (shared) ---- */
+function renderResults(data){
+  const results = document.getElementById("results");
+  results.classList.remove("hidden");
+  lastResultsPanel = document.querySelector(".nav-item.active")?.dataset.panel || null;
+
+  document.getElementById("m-temp").textContent = data.temperature ?? "--";
+  document.getElementById("m-humidity").textContent = data.humidity ?? "--";
+  document.getElementById("m-soiltemp").textContent = data.soil_temperature ?? "--";
+  document.getElementById("m-condition").textContent = data.weather_condition ?? "--";
+  document.getElementById("m-precip").textContent = data.precipitation ?? "--";
+
+  const moistureNum = parseFloat((data.soil_moisture || "0").toString().replace("%",""));
+  const clamped = Math.max(0, Math.min(100, isNaN(moistureNum) ? 0 : moistureNum));
+  document.getElementById("moisture-big").textContent = `${clamped.toFixed(0)}%`;
+
+  const fill = document.getElementById("gauge-fill");
+  fill.style.height = `${clamped}%`;
+  const bandName = document.getElementById("band-name");
+  const d = i18n[lang];
+  if(clamped < 20){
+    fill.style.setProperty("--gauge-top", "#E0A45C");
+    fill.style.setProperty("--gauge-bot", "#C97B3D");
+    bandName.textContent = d.bandDry;
+    bandName.style.color = "#C97B3D";
+  } else if(clamped <= 40){
+    fill.style.setProperty("--gauge-top", "#7BB177");
+    fill.style.setProperty("--gauge-bot", "#4C7A4C");
+    bandName.textContent = d.bandOk;
+    bandName.style.color = "#5B8C5A";
+  } else {
+    fill.style.setProperty("--gauge-top", "#5FA3D6");
+    fill.style.setProperty("--gauge-bot", "#2C5F6F");
+    bandName.textContent = d.bandWet;
+    bandName.style.color = "#3E7CB1";
+  }
+
+  const adviceEl = document.getElementById("advice-text");
+  const rawAdvice = data.ai_advice || "—";
+  const isUrduScript = /[\u0600-\u06FF]/.test(rawAdvice);
+  adviceEl.innerHTML = DOMPurify.sanitize(marked.parse(rawAdvice));
+  adviceEl.classList.toggle("urdu", isUrduScript);
+  adviceEl.setAttribute("dir", isUrduScript ? "rtl" : "ltr");
+
+  // Read-aloud: stop any in-progress playback from a previous answer, cache
+  // the plain-text version of this answer, and default the voice-language
+  // selector to whichever script the advice actually came back in.
+  stopReading();
+  lastAdvicePlainText = adviceEl.textContent || "";
+  document.getElementById("tts-lang-select").value = isUrduScript ? "ur" : "en";
+
+  results.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/* =========================================================
+   Read-aloud (Text-to-Speech) for the AI advice text.
+
+   Uses the browser's built-in Web Speech API (speechSynthesis) — no new
+   external API and no API key, and it works fully offline once the page
+   has loaded. The button is a plain type="button" element outside any
+   <form>, and its click handler never touches location/navigation, so
+   clicking it cannot reload or reset the page.
+
+   Urdu coverage depends on voices actually installed on the device/browser
+   (Chrome on desktop/Android usually ships one; some browsers ship none).
+   When a dedicated Urdu voice isn't available, this still sets the
+   utterance's language to Urdu so the engine attempts Urdu-appropriate
+   pronunciation rather than silently defaulting to an English voice.
+========================================================= */
+let lastAdvicePlainText = "";
+const ttsBtn = document.getElementById("tts-btn");
+const ttsBtnIcon = document.getElementById("tts-btn-icon");
+const ttsBtnLabel = document.getElementById("tts-btn-label");
+const ttsLangSelect = document.getElementById("tts-lang-select");
+const ttsSupported = "speechSynthesis" in window;
+
+let cachedVoices = [];
+function loadVoices(){
+  if(!ttsSupported) return;
+  cachedVoices = window.speechSynthesis.getVoices() || [];
+}
+if(ttsSupported){
+  loadVoices();
+  window.speechSynthesis.onvoiceschanged = loadVoices; // voices often load async
+}
+
+function pickVoice(langCode){
+  const prefix = langCode === "ur" ? "ur" : "en";
+  return (
+    cachedVoices.find(v => v.lang && v.lang.toLowerCase().startsWith(prefix + "-")) ||
+    cachedVoices.find(v => v.lang && v.lang.toLowerCase() === prefix) ||
+    null
+  );
+}
+
+function setTtsButtonState(isSpeaking){
+  ttsBtn.setAttribute("aria-pressed", isSpeaking ? "true" : "false");
+  ttsBtnIcon.textContent = isSpeaking ? "⏹️" : "🔊";
+  ttsBtnLabel.textContent = isSpeaking ? i18n[lang].stopReading : i18n[lang].readAloud;
+}
+
+function stopReading(){
+  if(ttsSupported && window.speechSynthesis.speaking){
+    window.speechSynthesis.cancel();
+  }
+  if(ttsBtn) setTtsButtonState(false);
+}
+
+function speakAdvice(){
+  if(!ttsSupported){
+    alert(i18n[lang].ttsUnsupported);
+    return;
+  }
+  if(!lastAdvicePlainText.trim() || lastAdvicePlainText.trim() === "—"){
+    return;
+  }
+  if(window.speechSynthesis.speaking){
+    stopReading();
+    return;
+  }
+
+  const voiceLang = ttsLangSelect.value; // "en" or "ur"
+  const utterance = new SpeechSynthesisUtterance(lastAdvicePlainText);
+  utterance.lang = voiceLang === "ur" ? "ur-PK" : "en-US";
+  utterance.rate = 0.95;
+  const voice = pickVoice(voiceLang);
+  if(voice) utterance.voice = voice;
+
+  utterance.onstart = () => setTtsButtonState(true);
+  utterance.onend = () => setTtsButtonState(false);
+  utterance.onerror = () => setTtsButtonState(false);
+
+  window.speechSynthesis.cancel(); // clear any stray queued utterance first
+  window.speechSynthesis.speak(utterance);
+}
+
+if(!ttsSupported){
+  ttsBtn.disabled = true;
+  ttsBtn.classList.add("opacity-40", "cursor-not-allowed");
+  ttsBtn.title = i18n[lang].ttsUnsupported;
+}
+
+ttsBtn.addEventListener("click", (e) => { e.preventDefault(); speakAdvice(); });
+ttsLangSelect.addEventListener("change", stopReading);
+window.addEventListener("beforeunload", stopReading);
+
+applyLang();
+</script>
+</body>
+</html>
