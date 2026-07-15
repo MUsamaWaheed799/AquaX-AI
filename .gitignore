@@ -1,0 +1,5 @@
+.env
+aquax.db
+__pycache__/
+*.pyc
+node_modules/
